@@ -1,0 +1,1 @@
+{ "name": "SmartMenu", "short_name": "SmartMenu", "start_url": "/admin", "display": "standalone", "background_color": "#FBF7F2", "theme_color": "#E8590C", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
