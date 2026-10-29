@@ -117,7 +117,7 @@ export function Login({ onOk, kitchen }: { onOk: (role: string) => void; kitchen
         <input autoFocus type="password" inputMode={kitchen ? "numeric" : undefined} value={pw} onChange={(e) => setPw(e.target.value)} placeholder={kitchen ? "PIN" : "Parol"} className={inputCls} />
         {err && <p className="mt-2 text-sm font-semibold text-red-600">{err}</p>}
         <Btn type="submit" size="lg" disabled={busy || !pw} className="mt-4 w-full">{busy ? "Tekshirilmoqda..." : "Kirish"}</Btn>
-        <p className="mt-4 text-center text-xs text-mute">Demo: parol <b>admin123</b> · oshxona PIN <b>1234</b></p>
+        {process.env.NEXT_PUBLIC_DEMO === "1" && <p className="mt-4 text-center text-xs text-mute">Demo: parol <b>admin123</b> · oshxona PIN <b>1234</b></p>}
       </form>
     </div>
   );
