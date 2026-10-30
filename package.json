@@ -17,6 +17,7 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@google/model-viewer": "^3.5.0",
     "@tailwindcss/postcss": "^4.1.0",
     "@types/node": "^22.0.0",
     "@types/qrcode": "^1.5.5",

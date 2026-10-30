@@ -554,7 +554,7 @@ function ModelViewer({ src, poster, title, hint, onClose }: { src: string; poste
     if (customElements.get("model-viewer")) return setReady(true);
     const sc = document.createElement("script");
     sc.type = "module";
-    sc.src = "https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js";
+    sc.src = "/model-viewer.min.js";
     sc.onload = () => setReady(true);
     document.head.appendChild(sc);
   }, []);
@@ -567,7 +567,7 @@ function ModelViewer({ src, poster, title, hint, onClose }: { src: string; poste
       </div>
       <div className="relative flex-1">
         {ready ? (
-          <MV src={src} poster={poster} ar="" ar-modes="webxr scene-viewer quick-look" ar-scale="fixed" camera-controls="" auto-rotate="" shadow-intensity="1" touch-action="pan-y" style={{ width: "100%", height: "100%", background: "transparent" }}>
+          <MV src={src} poster={poster} ar="" ar-modes="webxr scene-viewer quick-look" ar-scale="fixed" camera-orbit="0deg 58deg auto" camera-controls="" environment-image="neutral" exposure="1.1" auto-rotate="" shadow-intensity="1" touch-action="pan-y" style={{ width: "100%", height: "100%", background: "transparent" }}>
             <button slot="ar-button" className="absolute bottom-6 left-1/2 flex h-14 -translate-x-1/2 items-center gap-2 rounded-2xl bg-brand px-6 font-extrabold text-white shadow-xl">
               <Box size={20} /> AR
             </button>

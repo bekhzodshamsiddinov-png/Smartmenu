@@ -87,21 +87,24 @@ async function mutate<T, R>(path: string, init: () => T, fn: (doc: T) => R): Pro
 /* ---------- Menu ---------- */
 /** Upgrades menus saved by older versions (adds new fields from the seed once). */
 function upgrade(m: MenuData): MenuData {
-  if ((m as MenuData & { schema?: number }).schema === 2) return m;
+  const schema = (m as MenuData & { schema?: number }).schema ?? 1;
+  if (schema >= 3) return m;
   const seedById = new Map(seedMenu.items.map((i) => [i.id, i]));
   m.items = m.items.map((it) => {
     const sd = seedById.get(it.id);
     if (!sd) return it;
+    if (schema >= 2) return { ...it, model3d: it.model3d ?? sd.model3d };
     return {
       ...it,
+      model3d: it.model3d ?? sd.model3d,
       serves: it.serves ?? sd.serves,
       stock: it.stock !== undefined ? it.stock : sd.stock,
       suggest: it.suggest ?? sd.suggest,
       badges: Array.from(new Set([...it.badges, ...sd.badges.filter((b) => b === "halal" || b === "smoky")])),
     };
   });
-  m.settings = { mode: "restaurant", theme: "light", telegramOrder: m.settings.telegram, ...m.settings };
-  (m as MenuData & { schema?: number }).schema = 2;
+  if (schema < 2) m.settings = { mode: "restaurant", theme: "light", telegramOrder: m.settings.telegram, ...m.settings };
+  (m as MenuData & { schema?: number }).schema = 3;
   return m;
 }
 
