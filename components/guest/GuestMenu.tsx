@@ -543,22 +543,56 @@ function DishSheet({ it, lang, menu, inCart, onClose, onAdd }: { it: Item; lang:
           </div>
         )}
       </div>
-      {show3d && it.model3d && <ModelViewer src={it.model3d} poster={it.image} title={tr(it.name, lang)} hint={t("arHint", lang)} onClose={() => setShow3d(false)} />}
+      {show3d && it.model3d && <ModelViewer src={it.model3d} poster={it.image} title={tr(it.name, lang)} hint={t("arHint", lang)} lang={lang} onClose={() => setShow3d(false)} />}
     </Sheet>
   );
 }
 
-function ModelViewer({ src, poster, title, hint, onClose }: { src: string; poster: string; title: string; hint: string; onClose: () => void }) {
-  const [ready, setReady] = useState(false);
+type MVElement = HTMLElement & { canActivateAR?: boolean; activateAR?: () => Promise<void> };
+
+function ModelViewer({ src, poster, title, hint, lang, onClose }: { src: string; poster: string; title: string; hint: string; lang: Lang; onClose: () => void }) {
+  const host = useRef<HTMLDivElement>(null);
+  const mv = useRef<MVElement | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [canAR, setCanAR] = useState<boolean | null>(null);
+  const [progress, setProgress] = useState(0);
   useEffect(() => {
-    if (customElements.get("model-viewer")) return setReady(true);
-    const sc = document.createElement("script");
-    sc.type = "module";
-    sc.src = "/model-viewer.min.js";
-    sc.onload = () => setReady(true);
-    document.head.appendChild(sc);
-  }, []);
-  const MV = "model-viewer" as unknown as React.ElementType;
+    let cancelled = false;
+    const mount = async () => {
+      if (!customElements.get("model-viewer")) {
+        await new Promise<void>((res, rej) => {
+          const sc = document.createElement("script");
+          sc.type = "module";
+          sc.src = "/model-viewer.min.js";
+          sc.onload = () => res();
+          sc.onerror = () => rej();
+          document.head.appendChild(sc);
+        });
+        await customElements.whenDefined("model-viewer");
+      }
+      if (cancelled || !host.current) return;
+      // Build the element imperatively: React 19 would set boolean props like `ar` as properties
+      // with an empty string (= false), which silently disables AR.
+      const el = document.createElement("model-viewer") as MVElement;
+      const attrs: Record<string, string> = {
+        src, poster, alt: title,
+        ar: "", "ar-modes": "webxr scene-viewer quick-look", "ar-scale": "fixed", "ar-placement": "floor",
+        "camera-controls": "", "auto-rotate": "", "camera-orbit": "0deg 58deg auto",
+        "environment-image": "neutral", exposure: "1.1", "shadow-intensity": "1", "touch-action": "pan-y",
+      };
+      Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+      el.style.cssText = "width:100%;height:100%;background:transparent;--poster-color:transparent";
+      el.addEventListener("progress", (e) => setProgress((e as unknown as CustomEvent).detail?.totalProgress ?? 0));
+      el.addEventListener("load", () => { setLoaded(true); setCanAR(!!el.canActivateAR); });
+      host.current.appendChild(el);
+      mv.current = el;
+      setTimeout(() => !cancelled && setCanAR(!!el.canActivateAR), 1500);
+    };
+    mount().catch(() => setCanAR(false));
+    return () => { cancelled = true; mv.current?.remove(); };
+  }, [src, poster, title]);
+
+  const openAR = () => mv.current?.activateAR?.();
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-[#14110f] text-white">
       <div className="flex items-center justify-between p-4">
@@ -566,17 +600,30 @@ function ModelViewer({ src, poster, title, hint, onClose }: { src: string; poste
         <button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-white/10" aria-label="close"><X size={20} /></button>
       </div>
       <div className="relative flex-1">
-        {ready ? (
-          <MV src={src} poster={poster} ar="" ar-modes="webxr scene-viewer quick-look" ar-scale="fixed" camera-orbit="0deg 58deg auto" camera-controls="" environment-image="neutral" exposure="1.1" auto-rotate="" shadow-intensity="1" touch-action="pan-y" style={{ width: "100%", height: "100%", background: "transparent" }}>
-            <button slot="ar-button" className="absolute bottom-6 left-1/2 flex h-14 -translate-x-1/2 items-center gap-2 rounded-2xl bg-brand px-6 font-extrabold text-white shadow-xl">
-              <Box size={20} /> AR
-            </button>
-          </MV>
-        ) : (
-          <div className="grid h-full place-items-center"><span className="h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" /></div>
+        <div ref={host} className="absolute inset-0" />
+        {!loaded && (
+          <div className="pointer-events-none absolute inset-0 grid place-items-center">
+            <div className="text-center">
+              <span className="mx-auto block h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" />
+              <p className="mt-3 text-sm text-white/60">{Math.round(progress * 100)}%</p>
+            </div>
+          </div>
         )}
       </div>
-      <p className="px-6 pb-8 pt-3 text-center text-sm text-white/60">{hint}</p>
+      <div className="px-5 pb-8 pt-3 safe-b">
+        {canAR ? (
+          <>
+            <button onClick={openAR} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-brand text-lg font-extrabold text-white shadow-xl shadow-brand/30 active:scale-[0.99]">
+              <Box size={20} /> {t("arBtn", lang)}
+            </button>
+            <p className="mt-3 text-center text-sm text-white/60">{hint}</p>
+          </>
+        ) : canAR === false ? (
+          <p className="rounded-2xl bg-white/10 p-4 text-center text-sm leading-relaxed text-white/80">{t("arNo", lang)}</p>
+        ) : (
+          <p className="text-center text-sm text-white/60">{t("rotate3d", lang)}</p>
+        )}
+      </div>
     </div>
   );
 }
