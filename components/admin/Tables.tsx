@@ -22,7 +22,8 @@ export default function Tables() {
 
   const add = async () => {
     const nextNum = Math.max(0, ...menu.tables.map((t) => Number(t.id) || 0)) + 1;
-    const t: Table = { id: String(nextNum), name: name.trim() || `Stol ${nextNum}`, zone: "Zal" };
+    const word = menu.settings.mode === "hotel" ? "Xona" : "Stol";
+    const t: Table = { id: String(nextNum), name: name.trim() || `${word} ${nextNum}`, zone: "Zal" };
     if (await saveMenu({ tables: [...menu.tables, t] })) { setName(""); toast(`${t.name} qo'shildi`); }
   };
   const remove = async (t: Table) => {
@@ -47,16 +48,20 @@ export default function Tables() {
     </style></head><body>${menu.tables.map((t) => `<div class="c"><div class="b">${S.name}</div><div class="t">${t.name}</div><br/><img src="${qrs[t.id]}"/><div class="h">📱 Kamerani yo'naltiring — menyu ochiladi<br/>Наведите камеру — откроется меню</div><div class="h" style="font-size:11px;margin-top:10px">Smart<span style="color:#E8590C">Menu</span></div></div>`).join("")}<script>setTimeout(()=>print(),600)</script></body></html>`);
     w.document.close();
   };
+  const hotel = menu.settings.mode === "hotel";
+  const word = hotel ? "Xona" : "Stol";
   const busyTables = new Set(live.orders.filter((o) => ["new", "cooking", "ready", "served"].includes(o.status)).map((o) => o.table));
 
   return (
     <div>
-      <PageHead title="Stollar va QR" sub={`${menu.tables.length} ta stol · har bir stolga alohida QR`} right={<Btn variant="dark" onClick={printAll}><Printer size={17} /> <span className="hidden sm:inline">Hammasini chop etish</span></Btn>} />
+      <PageHead title={hotel ? "Xonalar va QR" : "Stollar va QR"} sub={`${menu.tables.length} ta ${word.toLowerCase()} · har biriga alohida QR`} right={<Btn variant="dark" onClick={printAll}><Printer size={17} /> <span className="hidden sm:inline">Hammasini chop etish</span></Btn>} />
 
       <div className="mb-5 flex gap-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Yangi stol nomi (masalan: VIP 1)" className={inputCls} />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={hotel ? "Yangi xona (masalan: Xona 204)" : "Yangi stol nomi (masalan: VIP 1)"} className={inputCls} />
         <Btn onClick={add} className="shrink-0"><Plus size={18} /> Qo'shish</Btn>
       </div>
+
+      <UniversalQR origin={origin} hotel={hotel} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {menu.tables.map((t) => (
@@ -81,4 +86,22 @@ export default function Tables() {
 
 function IconBtn({ children, onClick, label, danger }: { children: React.ReactNode; onClick: () => void; label: string; danger?: boolean }) {
   return <button onClick={onClick} title={label} aria-label={label} className={`grid h-9 place-items-center rounded-lg ${danger ? "bg-red-50 text-red-600" : "bg-sand"}`}>{children}</button>;
+}
+
+function UniversalQR({ origin, hotel }: { origin: string; hotel: boolean }) {
+  const [src, setSrc] = useState("");
+  const url = `${origin}/menu/qr`;
+  useEffect(() => {
+    if (origin) QRCode.toDataURL(url, { margin: 1, width: 480, color: { dark: "#1F1A17", light: "#FFFFFF" } }).then(setSrc);
+  }, [origin, url]);
+  return (
+    <div className="mb-4 flex items-center gap-4 rounded-2xl bg-ink p-4 text-white">
+      <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-white p-1">{src && <img src={src} alt="QR" className="h-full w-full" />}</div>
+      <div className="min-w-0 flex-1">
+        <p className="font-display font-extrabold">Umumiy QR {hotel ? "(lift, resepshn, xona kartochkasi)" : "(kirish, vitrina, flayer)"}</p>
+        <p className="mt-0.5 text-sm text-white/70">Mijoz buyurtmada {hotel ? "xona" : "stol"} raqamini o'zi yozadi. Bitta QR hamma joyga.</p>
+        {src && <a href={src} download="smartmenu-umumiy-qr.png" className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-white/15 px-3 text-sm font-bold"><Download size={15} /> Yuklab olish</a>}
+      </div>
+    </div>
+  );
 }

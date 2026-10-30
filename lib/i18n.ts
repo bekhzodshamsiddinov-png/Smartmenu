@@ -57,6 +57,22 @@ const dict = {
   b_chef: { uz: "Oshpaz tavsiyasi", ru: "От шефа", en: "Chef's pick" },
   repeat: { uz: "Yana buyurtma", ru: "Дозаказать", en: "Order more" },
   estimated: { uz: "Taxminiy vaqt", ru: "Примерное время", en: "Estimated time" },
+  b_halal: { uz: "Halol", ru: "Халяль", en: "Halal" },
+  b_smoky: { uz: "Dudlangan", ru: "Копчёное", en: "Smoky" },
+  left: { uz: "ta qoldi", ru: "осталось", en: "left" },
+  serves: { uz: "Kishilik", ru: "Порция на", en: "Serves" },
+  view3d: { uz: "Stolingizda ko'ring · 3D", ru: "Посмотреть на столе · 3D", en: "View in your space · 3D" },
+  arHint: { uz: "Telefonni stolga qarating — taom haqiqiy o'lchamda paydo bo'ladi", ru: "Наведите телефон на стол — блюдо появится в реальном размере", en: "Point your phone at the table — the dish appears true to size" },
+  smart: { uz: "Aqlli taklif", ru: "Умная подсказка", en: "Smart suggestion" },
+  table_n: { uz: "Stol raqami", ru: "Номер стола", en: "Table number" },
+  room_n: { uz: "Xona raqami", ru: "Номер комнаты", en: "Room number" },
+  room: { uz: "Xona", ru: "Комната", en: "Room" },
+  placeReq: { uz: "Iltimos, raqamni kiriting", ru: "Пожалуйста, укажите номер", en: "Please enter the number" },
+  tgOrder: { uz: "Telegram orqali yuborish", ru: "Отправить через Telegram", en: "Send via Telegram" },
+  or: { uz: "yoki", ru: "или", en: "or" },
+  stockErr: { uz: "Kechirasiz, bu taomdan qolmadi", ru: "Извините, это блюдо закончилось", en: "Sorry, this dish just ran out" },
+  todayN: { uz: "bugun", ru: "сегодня", en: "today" },
+  min2: { uz: "daqiqa", ru: "минут", en: "min" },
 } as const;
 
 export type Key = keyof typeof dict;

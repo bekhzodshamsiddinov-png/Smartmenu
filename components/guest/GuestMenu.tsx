@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bell, ChevronLeft, Clock, Flame, Info, Leaf, Minus, Phone, Plus, Receipt, Search, ShoppingBag, Sparkles, Star, Wifi, X, MapPin, ChefHat, Check, Camera, Send, Weight, Zap,
+  Bell, ChevronLeft, Clock, Flame, Info, Leaf, Minus, Phone, Plus, Receipt, Search, ShoppingBag, Sparkles, Star, Wifi, X, MapPin, ChefHat, Check, Camera, Send, Weight, Zap, Moon, Sun, Box, Users,
 } from "lucide-react";
 import type { Item, Lang, MenuData, Order } from "@/lib/types";
 import { money, tr } from "@/lib/format";
@@ -16,9 +16,13 @@ const badgeStyle: Record<string, string> = {
   spicy: "bg-red-600 text-white",
   veg: "bg-lime-600 text-white",
   chef: "bg-ink text-white",
+  halal: "bg-teal-700 text-white",
+  smoky: "bg-stone-600 text-white",
 };
+const isOut = (it: Item) => !it.available || it.stock === 0;
+const maxQty = (it: Item) => (typeof it.stock === "number" ? it.stock : 99);
 const BadgeIcon = ({ b }: { b: string }) =>
-  b === "spicy" ? <Flame size={11} /> : b === "veg" ? <Leaf size={11} /> : b === "chef" ? <ChefHat size={11} /> : b === "new" ? <Sparkles size={11} /> : <Star size={11} />;
+  b === "spicy" ? <Flame size={11} /> : b === "veg" ? <Leaf size={11} /> : b === "chef" ? <ChefHat size={11} /> : b === "new" ? <Sparkles size={11} /> : b === "halal" ? <span className="text-[10px] leading-none">☪</span> : b === "smoky" ? <Flame size={11} /> : <Star size={11} />;
 
 function useLS<T>(key: string, init: T) {
   const [v, setV] = useState<T>(init);
@@ -37,8 +41,11 @@ function useLS<T>(key: string, init: T) {
   return [v, setV] as const;
 }
 
-export default function GuestMenu({ initial, tableId }: { initial: MenuData; tableId: string }) {
+export default function GuestMenu({ initial, tableId, sold: initialSold = {} }: { initial: MenuData; tableId: string; sold?: Record<string, number> }) {
   const [menu, setMenu] = useState(initial);
+  const [sold, setSold] = useState<Record<string, number>>(initialSold);
+  const [theme, setTheme] = useLS<"light" | "dark">("sm_theme", initial.settings.theme === "dark" ? "dark" : "light");
+  const [place, setPlace] = useLS<string>("sm_place", "");
   const [lang, setLang] = useLS<Lang>("sm_lang", "uz");
   const [cart, setCart] = useLS<CartLine[]>(`sm_cart_${tableId}`, []);
   const [myOrders, setMyOrders] = useLS<string[]>(`sm_orders_${tableId}`, []);
@@ -53,7 +60,10 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
   const chipsRef = useRef<HTMLDivElement>(null);
   const S = menu.settings;
   const table = menu.tables.find((x) => x.id === tableId);
-  const tableName = table?.name ?? `${t("table", lang)} ${tableId}`;
+  const hotel = S.mode === "hotel";
+  const needPlace = !table;
+  const placeWord = hotel ? t("room", lang) : t("table", lang);
+  const tableName = table?.name ?? (place ? `${placeWord} ${place}` : "");
 
   const showToast = useCallback((text: string) => setToast({ id: Date.now(), text }), []);
 
@@ -62,7 +72,11 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
     const id = setInterval(async () => {
       try {
         const r = await fetch("/api/menu", { cache: "no-store" });
-        if (r.ok) setMenu(await r.json());
+        if (r.ok) {
+          const d = await r.json();
+          setSold(d.sold ?? {});
+          setMenu(d);
+        }
       } catch {}
     }, 45000);
     return () => clearInterval(id);
@@ -76,11 +90,14 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
       map[c.id] = menu.items
         .filter((i) => i.categoryId === c.id)
         .filter((i) => !ql || tr(i.name, lang).toLowerCase().includes(ql) || tr(i.desc, lang).toLowerCase().includes(ql) || i.name.uz.toLowerCase().includes(ql))
-        .sort((a, b) => Number(b.available) - Number(a.available) || a.sort - b.sort);
+        .sort((a, b) => Number(isOut(a)) - Number(isOut(b)) || a.sort - b.sort);
     }
     return map;
   }, [menu, cats, q, lang]);
-  const popular = useMemo(() => menu.items.filter((i) => i.available && (i.badges.includes("hit") || i.badges.includes("chef"))).slice(0, 8), [menu]);
+  const popular = useMemo(
+    () => menu.items.filter((i) => !isOut(i) && (i.badges.includes("hit") || i.badges.includes("chef") || (sold[i.id] || 0) >= 3)).sort((a, b) => (sold[b.id] || 0) - (sold[a.id] || 0)).slice(0, 8),
+    [menu, sold]
+  );
   const anyResults = Object.values(itemsByCat).some((a) => a.length);
 
   // scrollspy
@@ -129,12 +146,19 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
     if (navigator.vibrate) navigator.vibrate(15);
   };
   const quickAdd = (it: Item) => {
-    if (!it.available) return;
+    if (isOut(it)) return;
+    if (qtyOfItem(it.id) >= maxQty(it)) return showToast(`${it.stock} ${t("left", lang)}`);
     if (it.sizes?.length || it.addons?.length) return setDish(it);
     addLine({ itemId: it.id, qty: 1, addonIds: [] });
     showToast(`${tr(it.name, lang)} · ${t("added", lang)}`);
   };
-  const changeQty = (key: string, d: number) => setCart((c) => c.map((x) => (x.key === key ? { ...x, qty: x.qty + d } : x)).filter((x) => x.qty > 0));
+  const changeQty = (key: string, d: number) =>
+    setCart((c) => {
+      const line = c.find((x) => x.key === key);
+      const it = line && itemOf(line.itemId);
+      if (d > 0 && it && qtyOfItem(it.id) + d > maxQty(it)) { showToast(`${it.stock} ${t("left", lang)}`); return c; }
+      return c.map((x) => (x.key === key ? { ...x, qty: x.qty + d } : x)).filter((x) => x.qty > 0);
+    });
 
   const lockBody = !!(dish || sheet || trackId);
   useEffect(() => {
@@ -142,6 +166,7 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
   }, [lockBody]);
 
   return (
+    <div className={theme === "dark" ? "theme-dark min-h-dvh bg-cream" : "min-h-dvh bg-cream"}>
     <div className="mx-auto min-h-dvh max-w-[520px] overflow-x-clip bg-cream pb-32">
       {/* HERO */}
       <header className="relative h-56 overflow-hidden">
@@ -155,9 +180,14 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
               </button>
             ))}
           </div>
-          <button onClick={() => setSheet("info")} className="grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white backdrop-blur-md" aria-label="info">
-            <Info size={19} />
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white backdrop-blur-md" aria-label="theme">
+              {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
+            </button>
+            <button onClick={() => setSheet("info")} className="grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white backdrop-blur-md" aria-label="info">
+              <Info size={19} />
+            </button>
+          </div>
         </div>
         <div className="absolute bottom-0 left-0 right-0 flex items-end gap-3 p-4">
           <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white text-3xl shadow-lg ring-4 ring-white/30">
@@ -167,7 +197,7 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
             <h1 className="font-display text-2xl font-extrabold leading-tight">{S.name}</h1>
             <p className="truncate text-sm text-white/85">{tr(S.tagline, lang)}</p>
           </div>
-          <span className="shrink-0 rounded-full bg-brand px-3 py-1.5 text-xs font-extrabold text-white shadow-lg">{tableName}</span>
+          {tableName && <span className="shrink-0 rounded-full bg-brand px-3 py-1.5 text-xs font-extrabold text-white shadow-lg">{tableName}</span>}
         </div>
       </header>
 
@@ -213,6 +243,7 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
                 <div className="relative h-28">
                   <img src={it.image} alt="" className="h-full w-full object-cover" loading="lazy" />
                   {qtyOfItem(it.id) > 0 && <span className="absolute right-2 top-2 grid h-6 min-w-6 place-items-center rounded-full bg-brand px-1.5 text-xs font-extrabold text-white">{qtyOfItem(it.id)}</span>}
+                  {(sold[it.id] || 0) > 0 && <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur">🔥 {sold[it.id]} · {t("todayN", lang)}</span>}
                 </div>
                 <div className="p-3">
                   <p className="line-clamp-1 text-sm font-bold">{tr(it.name, lang)}</p>
@@ -237,7 +268,7 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
             <h2 className="mb-3 font-display text-xl font-extrabold">{c.emoji} {tr(c.name, lang)}</h2>
             <div className="space-y-3">
               {itemsByCat[c.id].map((it) => (
-                <DishCard key={it.id} it={it} lang={lang} cur={S.currency} qty={qtyOfItem(it.id)} onOpen={() => setDish(it)} onAdd={() => quickAdd(it)} canOrder={S.ordering} />
+                <DishCard key={it.id} it={it} lang={lang} cur={S.currency} qty={qtyOfItem(it.id)} sold={sold[it.id] || 0} onOpen={() => setDish(it)} onAdd={() => quickAdd(it)} canOrder={S.ordering} />
               ))}
             </div>
           </section>
@@ -250,7 +281,7 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
 
       {/* FLOATING */}
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto max-w-[520px] px-4 safe-b">
-        <div className="pointer-events-auto mb-3 flex justify-end gap-2">
+        <div className="pointer-events-auto mb-3 flex justify-end gap-2 empty:hidden">
           {myOrders.length > 0 && (
             <button onClick={() => setSheet("orders")} className="flex h-12 items-center gap-2 rounded-full bg-white px-4 text-sm font-bold shadow-lg ring-1 ring-line">
               <Receipt size={18} className="text-brand" /> {t("myOrders", lang)}
@@ -273,6 +304,7 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
           it={dish}
           lang={lang}
           menu={menu}
+          inCart={qtyOfItem(dish.id)}
           onClose={() => setDish(null)}
           onAdd={(line) => {
             addLine(line);
@@ -292,9 +324,16 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
           service={service}
           tableId={tableId}
           tableName={tableName}
+          needPlace={needPlace}
+          hotel={hotel}
+          place={place}
+          setPlace={setPlace}
           onQty={changeQty}
           onAdd={(it) => quickAdd(it)}
           onClose={() => setSheet(null)}
+          onStockError={async () => {
+            try { const r = await fetch("/api/menu", { cache: "no-store" }); if (r.ok) setMenu(await r.json()); } catch {}
+          }}
           onPlaced={(o) => {
             setCart([]);
             setMyOrders((m) => [o.id, ...m.filter((x) => x !== o.id)].slice(0, 10));
@@ -319,7 +358,7 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
         </Sheet>
       )}
 
-      {sheet === "call" && <CallSheet lang={lang} tableId={tableId} tableName={tableName} onClose={() => setSheet(null)} onDone={(m) => { setSheet(null); showToast(m); }} />}
+      {sheet === "call" && <CallSheet lang={lang} tableId={tableId} tableName={tableName} needPlace={needPlace} hotel={hotel} place={place} setPlace={setPlace} onClose={() => setSheet(null)} onDone={(m) => { setSheet(null); showToast(m); }} />}
 
       {sheet === "orders" && (
         <Sheet onClose={() => setSheet(null)} title={t("myOrders", lang)}>
@@ -327,7 +366,7 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
         </Sheet>
       )}
 
-      {trackId && <TrackSheet id={trackId} lang={lang} cur={S.currency} tableId={tableId} onClose={() => setTrackId(null)} onToast={showToast} />}
+      {trackId && <TrackSheet id={trackId} lang={lang} cur={S.currency} menu={menu} tableId={tableId} onClose={() => setTrackId(null)} onToast={showToast} />}
 
       {toast && (
         <div key={toast.id} className="anim-toast fixed bottom-28 left-1/2 z-[70] flex items-center gap-2 whitespace-nowrap rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-white shadow-xl" onAnimationEnd={() => setToast(null)}>
@@ -335,12 +374,15 @@ export default function GuestMenu({ initial, tableId }: { initial: MenuData; tab
         </div>
       )}
     </div>
+    </div>
   );
 }
 
-function DishCard({ it, lang, cur, qty, onOpen, onAdd, canOrder }: { it: Item; lang: Lang; cur: string; qty: number; onOpen: () => void; onAdd: () => void; canOrder: boolean }) {
+function DishCard({ it, lang, cur, qty, sold, onOpen, onAdd, canOrder }: { it: Item; lang: Lang; cur: string; qty: number; sold: number; onOpen: () => void; onAdd: () => void; canOrder: boolean }) {
+  const out = isOut(it);
+  const low = !out && typeof it.stock === "number" && it.stock <= 5;
   return (
-    <div onClick={onOpen} className={`flex cursor-pointer gap-3 rounded-3xl bg-white p-3 shadow-sm ring-1 ring-line transition active:scale-[0.99] ${!it.available ? "opacity-60" : ""}`}>
+    <div onClick={onOpen} className={`flex cursor-pointer gap-3 rounded-3xl bg-white p-3 shadow-sm ring-1 ring-line transition active:scale-[0.99] ${out ? "opacity-60" : ""}`}>
       <div className="flex min-w-0 flex-1 flex-col py-1 pl-1">
         <div className="mb-1 flex flex-wrap gap-1">
           {it.badges.slice(0, 2).map((b) => (
@@ -353,10 +395,17 @@ function DishCard({ it, lang, cur, qty, onOpen, onAdd, canOrder }: { it: Item; l
           <span className="text-[15px] font-extrabold">{money(it.price, cur)}</span>
           {it.weight && <span className="text-xs text-mute">· {it.weight}</span>}
         </div>
+        {(low || sold > 0 || it.model3d) && (
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-bold">
+            {low && <span className="flex items-center gap-1 text-amber-600"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> {it.stock} {t("left", lang)}</span>}
+            {sold > 0 && <span className="text-mute">🔥 {sold} · {t("todayN", lang)}</span>}
+            {it.model3d && <span className="flex items-center gap-1 text-brand"><Box size={12} /> 3D</span>}
+          </div>
+        )}
       </div>
       <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl">
-        <img src={it.image} alt="" className={`h-full w-full object-cover ${!it.available ? "grayscale" : ""}`} loading="lazy" />
-        {!it.available ? (
+        <img src={it.image} alt="" className={`h-full w-full object-cover ${out ? "grayscale" : ""}`} loading="lazy" />
+        {out ? (
           <span className="absolute inset-x-0 bottom-0 bg-ink/80 py-1 text-center text-[11px] font-bold text-white">{t("soldout", lang)}</span>
         ) : canOrder ? (
           <button
@@ -401,7 +450,9 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
   );
 }
 
-function DishSheet({ it, lang, menu, onClose, onAdd }: { it: Item; lang: Lang; menu: MenuData; onClose: () => void; onAdd: (l: Omit<CartLine, "key">) => void }) {
+function DishSheet({ it, lang, menu, inCart, onClose, onAdd }: { it: Item; lang: Lang; menu: MenuData; inCart: number; onClose: () => void; onAdd: (l: Omit<CartLine, "key">) => void }) {
+  const [show3d, setShow3d] = useState(false);
+  const canAdd = Math.max(0, maxQty(it) - inCart);
   const [sizeId, setSizeId] = useState(it.sizes?.[0]?.id);
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [qty, setQty] = useState(1);
@@ -415,6 +466,9 @@ function DishSheet({ it, lang, menu, onClose, onAdd }: { it: Item; lang: Lang; m
         <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
         <button onClick={onClose} className="absolute left-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-white/90 shadow" aria-label="back"><ChevronLeft size={22} /></button>
         <div className="absolute left-1/2 top-2 h-1.5 w-12 -translate-x-1/2 rounded-full bg-white/70" />
+        {typeof it.stock === "number" && it.stock > 0 && it.stock <= 5 && (
+          <span className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-amber-400 px-3 py-1.5 text-xs font-extrabold text-ink shadow"><span className="h-1.5 w-1.5 rounded-full bg-ink" /> {it.stock} {t("left", lang)}</span>
+        )}
       </div>
       <div className="-mt-6 relative rounded-t-[28px] bg-cream px-5 pb-36 pt-5">
         <div className="mb-2 flex flex-wrap gap-1.5">
@@ -428,7 +482,13 @@ function DishSheet({ it, lang, menu, onClose, onAdd }: { it: Item; lang: Lang; m
           {it.weight && <Chip icon={<Weight size={14} />}>{it.weight}</Chip>}
           {it.kcal && <Chip icon={<Flame size={14} />}>{it.kcal} kcal</Chip>}
           {it.time && <Chip icon={<Clock size={14} />}>~{it.time} {t("min", lang)}</Chip>}
+          {it.serves && <Chip icon={<Users size={14} />}>{it.serves}</Chip>}
         </div>
+        {it.model3d && (
+          <button onClick={() => setShow3d(true)} className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-brand-soft font-extrabold text-brand ring-1 ring-brand/30">
+            <Box size={18} /> {t("view3d", lang)}
+          </button>
+        )}
 
         {!!it.sizes?.length && (
           <div className="mt-6">
@@ -466,8 +526,8 @@ function DishSheet({ it, lang, menu, onClose, onAdd }: { it: Item; lang: Lang; m
       </div>
 
       <div className="absolute inset-x-0 bottom-0 z-10 border-t border-line bg-white px-4 pt-3 safe-b">
-        {!it.available ? (
-          <div className="rounded-2xl bg-sand py-4 text-center font-bold text-mute">{t("soldout", lang)}</div>
+        {isOut(it) || canAdd === 0 ? (
+          <div className="rounded-2xl bg-sand py-4 text-center font-bold text-mute">{isOut(it) ? t("soldout", lang) : `${it.stock} ${t("left", lang)}`}</div>
         ) : !menu.settings.ordering ? (
           <div className="rounded-2xl bg-sand py-4 text-center text-sm font-bold text-mute">{t("viewOnly", lang)}</div>
         ) : (
@@ -475,7 +535,7 @@ function DishSheet({ it, lang, menu, onClose, onAdd }: { it: Item; lang: Lang; m
             <div className="flex h-14 items-center rounded-2xl bg-sand">
               <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid h-14 w-12 place-items-center" aria-label="minus"><Minus size={18} /></button>
               <span className="w-6 text-center text-lg font-extrabold">{qty}</span>
-              <button onClick={() => setQty((q) => q + 1)} className="grid h-14 w-12 place-items-center" aria-label="plus"><Plus size={18} /></button>
+              <button onClick={() => setQty((q) => Math.min(canAdd, q + 1))} className="grid h-14 w-12 place-items-center" aria-label="plus"><Plus size={18} /></button>
             </div>
             <button onClick={() => onAdd({ itemId: it.id, qty, sizeId, addonIds, note: note.trim() || undefined })} className="flex h-14 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-brand px-3 text-[15px] font-extrabold text-white shadow-lg shadow-brand/30 active:scale-[0.99]">
               {t("add", lang)} · {money(unit * qty, cur)}
@@ -483,7 +543,41 @@ function DishSheet({ it, lang, menu, onClose, onAdd }: { it: Item; lang: Lang; m
           </div>
         )}
       </div>
+      {show3d && it.model3d && <ModelViewer src={it.model3d} poster={it.image} title={tr(it.name, lang)} hint={t("arHint", lang)} onClose={() => setShow3d(false)} />}
     </Sheet>
+  );
+}
+
+function ModelViewer({ src, poster, title, hint, onClose }: { src: string; poster: string; title: string; hint: string; onClose: () => void }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (customElements.get("model-viewer")) return setReady(true);
+    const sc = document.createElement("script");
+    sc.type = "module";
+    sc.src = "https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js";
+    sc.onload = () => setReady(true);
+    document.head.appendChild(sc);
+  }, []);
+  const MV = "model-viewer" as unknown as React.ElementType;
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col bg-[#14110f] text-white">
+      <div className="flex items-center justify-between p-4">
+        <p className="font-display text-lg font-extrabold">{title}</p>
+        <button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-white/10" aria-label="close"><X size={20} /></button>
+      </div>
+      <div className="relative flex-1">
+        {ready ? (
+          <MV src={src} poster={poster} ar="" ar-modes="webxr scene-viewer quick-look" ar-scale="fixed" camera-controls="" auto-rotate="" shadow-intensity="1" touch-action="pan-y" style={{ width: "100%", height: "100%", background: "transparent" }}>
+            <button slot="ar-button" className="absolute bottom-6 left-1/2 flex h-14 -translate-x-1/2 items-center gap-2 rounded-2xl bg-brand px-6 font-extrabold text-white shadow-xl">
+              <Box size={20} /> AR
+            </button>
+          </MV>
+        ) : (
+          <div className="grid h-full place-items-center"><span className="h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" /></div>
+        )}
+      </div>
+      <p className="px-6 pb-8 pt-3 text-center text-sm text-white/60">{hint}</p>
+    </div>
   );
 }
 
@@ -493,7 +587,8 @@ const Chip = ({ icon, children }: { icon: React.ReactNode; children: React.React
 
 function CartSheet(props: {
   menu: MenuData; lang: Lang; lines: CartLine[]; unitPrice: (l: CartLine) => number; subtotal: number; service: number; tableId: string; tableName: string;
-  onQty: (key: string, d: number) => void; onAdd: (it: Item) => void; onClose: () => void; onPlaced: (o: Order) => void;
+  needPlace: boolean; hotel: boolean; place: string; setPlace: (v: string) => void;
+  onQty: (key: string, d: number) => void; onAdd: (it: Item) => void; onClose: () => void; onPlaced: (o: Order) => void; onStockError: () => void;
 }) {
   const { menu, lang, lines, unitPrice, subtotal, service, onQty, onClose } = props;
   const S = menu.settings;
@@ -503,22 +598,56 @@ function CartSheet(props: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const inCart = new Set(lines.map((l) => l.itemId));
+  const smart = (() => {
+    for (const l of lines) {
+      const it = menu.items.find((i) => i.id === l.itemId);
+      const sg = it?.suggest;
+      const target = sg && menu.items.find((i) => i.id === sg.itemId);
+      if (sg && target && !isOut(target) && !inCart.has(target.id)) return { it: target, reason: tr(sg.reason, lang) };
+    }
+    return null;
+  })();
   const upsell = menu.items
-    .filter((i) => i.available && !inCart.has(i.id) && !i.sizes?.length && (i.categoryId === "c-ichimlik" || i.categoryId === "c-desert" || i.categoryId === "c-salat" || i.price <= 25000))
+    .filter((i) => !isOut(i) && !inCart.has(i.id) && i.id !== smart?.it.id && !i.sizes?.length && (i.categoryId === "c-ichimlik" || i.categoryId === "c-desert" || i.categoryId === "c-salat" || i.price <= 25000))
     .slice(0, 8);
 
-  const place = async () => {
+  const lineText = () =>
+    lines
+      .map((l) => {
+        const it = menu.items.find((i) => i.id === l.itemId)!;
+        const size = it.sizes?.find((s) => s.id === l.sizeId);
+        const adds = (it.addons ?? []).filter((a) => l.addonIds.includes(a.id));
+        return `• ${l.qty}× ${it.name.uz}${size ? ` (${size.name.uz})` : ""}${adds.length ? ` + ${adds.map((a) => a.name.uz).join(", ")}` : ""}${l.note ? ` — ${l.note}` : ""}`;
+      })
+      .join("\n");
+  const place = async (via?: "telegram") => {
+    if (props.needPlace && !props.place.trim()) return setErr(t("placeReq", lang));
     setBusy(true);
     setErr("");
+    const tg = via === "telegram" && S.telegramOrder ? window.open("about:blank", "_blank") : null;
     try {
       const r = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ table: props.tableId, lines: lines.map(({ itemId, qty, sizeId, addonIds, note }) => ({ itemId, qty, sizeId, addonIds, note })), payment, comment: comment.trim() || undefined, lang }),
+        body: JSON.stringify({ table: props.tableId, place: props.place, lines: lines.map(({ itemId, qty, sizeId, addonIds, note }) => ({ itemId, qty, sizeId, addonIds, note })), payment, comment: comment.trim() || undefined, lang }),
       });
+      if (r.status === 409) {
+        const d = await r.json();
+        const it = menu.items.find((i) => i.id === d.itemId);
+        setErr(`${t("stockErr", lang)}${it ? `: ${tr(it.name, lang)}` : ""}${d.left ? ` (${d.left} ${t("left", lang)})` : ""}`);
+        props.onStockError();
+        tg?.close();
+        return;
+      }
       if (!r.ok) throw new Error();
-      props.onPlaced(await r.json());
+      const order: Order = await r.json();
+      if (tg) {
+        const text = `🧾 ${S.name} · #${order.num}\n📍 ${order.table}\n\n${lineText()}\n\n💰 ${money(order.total, S.currency)}${comment.trim() ? `\n💬 ${comment.trim()}` : ""}`;
+        tg.location.href = `https://t.me/${S.telegramOrder!.replace(/^@/, "")}?text=${encodeURIComponent(text)}`;
+      }
+      props.onPlaced(order);
     } catch {
+      tg?.close();
       setErr(t("error", lang));
     } finally {
       setBusy(false);
@@ -526,7 +655,7 @@ function CartSheet(props: {
   };
 
   return (
-    <Sheet onClose={onClose} title={`${t("cart", lang)} · ${props.tableName}`} full>
+    <Sheet onClose={onClose} title={props.tableName ? `${t("cart", lang)} · ${props.tableName}` : t("cart", lang)} full>
       {lines.length === 0 ? (
         <div className="px-6 py-24 text-center">
           <ShoppingBag className="mx-auto mb-3 text-mute" size={44} />
@@ -562,6 +691,19 @@ function CartSheet(props: {
             })}
           </div>
 
+          {smart && (
+            <div className="px-4 pb-3">
+              <div className="flex items-center gap-3 rounded-2xl bg-brand-soft p-3 ring-1 ring-brand/25">
+                <img src={smart.it.image} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" />
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-brand"><Zap size={11} /> {t("smart", lang)}</p>
+                  <p className="text-sm leading-snug"><b>{tr(smart.it.name, lang)}</b> — {smart.reason}</p>
+                </div>
+                <button onClick={() => props.onAdd(smart.it)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand text-white shadow" aria-label="add"><Plus size={20} strokeWidth={3} /></button>
+              </div>
+            </div>
+          )}
+
           {upsell.length > 0 && (
             <div className="pb-2">
               <p className="px-4 font-display font-extrabold">✨ {t("upsell", lang)}</p>
@@ -580,6 +722,12 @@ function CartSheet(props: {
           )}
 
           <div className="space-y-4 p-4">
+            {props.needPlace && (
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-extrabold uppercase tracking-wide text-brand">{props.hotel ? t("room_n", lang) : t("table_n", lang)} *</span>
+                <input value={props.place} onChange={(e) => { props.setPlace(e.target.value.slice(0, 12)); setErr(""); }} inputMode={props.hotel ? "numeric" : "text"} placeholder={props.hotel ? "204" : "4"} className="h-14 w-full rounded-2xl border-2 border-brand/40 bg-white px-4 text-lg font-extrabold outline-none focus:border-brand" />
+              </label>
+            )}
             <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2} placeholder={t("comment", lang)} className="w-full resize-none rounded-2xl border border-line bg-white p-3 text-[16px] outline-none focus:border-brand" />
             {payOpts.length > 0 && (
               <div>
@@ -602,9 +750,14 @@ function CartSheet(props: {
           </div>
           <div className="absolute inset-x-0 bottom-0 z-10 border-t border-line bg-white px-4 pt-3 safe-b">
             {err && <p className="mb-2 text-center text-sm font-semibold text-red-600">{err}</p>}
-            <button disabled={busy} onClick={place} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-brand text-lg font-extrabold text-white shadow-lg shadow-brand/30 disabled:opacity-60">
+            <button disabled={busy} onClick={() => place()} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-brand text-lg font-extrabold text-white shadow-lg shadow-brand/30 disabled:opacity-60">
               {busy ? t("sending", lang) : <>{t("order", lang)} · {money(subtotal + service, S.currency)}</>}
             </button>
+            {S.telegramOrder && (
+              <button disabled={busy} onClick={() => place("telegram")} className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-bold text-[#229ED9] disabled:opacity-60">
+                <Send size={16} /> {t("or", lang)} {t("tgOrder", lang).toLowerCase()}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -612,9 +765,11 @@ function CartSheet(props: {
   );
 }
 
-function CallSheet({ lang, tableId, tableName, onClose, onDone }: { lang: Lang; tableId: string; tableName: string; onClose: () => void; onDone: (m: string) => void }) {
+function CallSheet({ lang, tableId, tableName, needPlace, hotel, place, setPlace, onClose, onDone }: { lang: Lang; tableId: string; tableName: string; needPlace: boolean; hotel: boolean; place: string; setPlace: (v: string) => void; onClose: () => void; onDone: (m: string) => void }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState("");
   const call = async (type: "waiter" | "bill") => {
+    if (needPlace && !place.trim()) return setErr(t("placeReq", lang));
     setBusy(type);
     try {
       await fetch("/api/calls", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ table: tableName || tableId, type }) });
@@ -624,7 +779,13 @@ function CallSheet({ lang, tableId, tableName, onClose, onDone }: { lang: Lang; 
     }
   };
   return (
-    <Sheet onClose={onClose} title={tableName}>
+    <Sheet onClose={onClose} title={tableName || (hotel ? t("room_n", lang) : t("table_n", lang))}>
+      {needPlace && (
+        <div className="px-4 pt-4">
+          <input value={place} onChange={(e) => { setPlace(e.target.value.slice(0, 12)); setErr(""); }} placeholder={hotel ? t("room_n", lang) : t("table_n", lang)} className="h-14 w-full rounded-2xl border-2 border-brand/40 bg-white px-4 text-lg font-extrabold outline-none focus:border-brand" />
+          {err && <p className="mt-1 text-sm font-semibold text-red-600">{err}</p>}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 p-4 pb-8">
         <button disabled={!!busy} onClick={() => call("waiter")} className="flex flex-col items-center gap-3 rounded-3xl bg-white p-6 ring-1 ring-line active:scale-[0.98]">
           <span className="grid h-16 w-16 place-items-center rounded-2xl bg-brand-soft text-brand"><Bell size={30} /></span>
@@ -641,7 +802,7 @@ function CallSheet({ lang, tableId, tableName, onClose, onDone }: { lang: Lang; 
 
 const STEPS = ["new", "cooking", "ready", "served"] as const;
 
-function TrackSheet({ id, lang, cur, onClose, onToast }: { id: string; lang: Lang; cur: string; tableId: string; onClose: () => void; onToast: (m: string) => void }) {
+function TrackSheet({ id, lang, cur, menu, onClose, onToast }: { id: string; lang: Lang; cur: string; menu: MenuData; tableId: string; onClose: () => void; onToast: (m: string) => void }) {
   const [o, setO] = useState<Order | null>(null);
   const [rated, setRated] = useState(0);
   useEffect(() => {
@@ -656,6 +817,9 @@ function TrackSheet({ id, lang, cur, onClose, onToast }: { id: string; lang: Lan
     const iv = setInterval(load, 5000);
     return () => { alive = false; clearInterval(iv); };
   }, [id]);
+  const eta = o
+    ? Math.max(5, Math.max(...o.lines.map((l) => menu.items.find((i) => i.id === l.itemId)?.time ?? 10)) + 5 - Math.floor((Date.now() - o.createdAt) / 60000))
+    : 0;
   const stepIdx = o ? Math.max(0, STEPS.indexOf((o.status === "closed" ? "served" : o.status) as never)) : 0;
   const rate = async (n: number) => {
     setRated(n);
@@ -672,6 +836,11 @@ function TrackSheet({ id, lang, cur, onClose, onToast }: { id: string; lang: Lan
           </div>
           <p className="mt-4 text-sm font-bold uppercase tracking-wider text-mute">{t("orderNo", lang)} #{o?.num ?? "…"}</p>
           <h2 className="mt-1 font-display text-2xl font-extrabold">{o?.status === "cancelled" ? t("st_cancelled", lang) : t("thanks", lang)}</h2>
+          {o && eta > 0 && ["new", "cooking"].includes(o.status) && (
+            <p className="mx-auto mt-3 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-extrabold ring-1 ring-line">
+              <Clock size={16} className="text-brand" /> {t("estimated", lang)}: ~{eta} {t("min2", lang)}
+            </p>
+          )}
         </div>
 
         {o?.status !== "cancelled" && (

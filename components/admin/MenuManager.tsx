@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ImagePlus, Layers, Pencil, Plus, Search, Trash2, UtensilsCrossed } from "lucide-react";
+import { ArrowDown, ArrowUp, Box, ImagePlus, Layers, Minus, Pencil, Plus, Search, Trash2, UtensilsCrossed } from "lucide-react";
 import { useAdmin } from "./AdminApp";
 import { Btn, Empty, Field, Modal, PageHead, Toggle, inputCls } from "./ui";
 import { money } from "@/lib/format";
@@ -12,6 +12,8 @@ const BADGES: { id: Item["badges"][number]; label: string }[] = [
   { id: "spicy", label: "🌶 Achchiq" },
   { id: "veg", label: "🌿 Vegetarian" },
   { id: "chef", label: "👨‍🍳 Oshpaz tavsiyasi" },
+  { id: "halal", label: "☪ Halol" },
+  { id: "smoky", label: "🔥 Dudlangan" },
 ];
 const uid = (p: string) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 const emptyT3 = (): T3 => ({ uz: "", ru: "", en: "" });
@@ -42,7 +44,7 @@ export default function MenuManager() {
     id: uid("i"), categoryId: cat !== "all" ? cat : cats[0]?.id ?? "", name: emptyT3(), desc: emptyT3(), price: 0, image: "", badges: [], available: true, sort: menu.items.length + 1, addons: [], sizes: [],
   });
 
-  const soldOut = menu.items.filter((i) => !i.available).length;
+  const soldOut = menu.items.filter((i) => !i.available || i.stock === 0).length;
 
   return (
     <div>
@@ -80,8 +82,17 @@ export default function MenuManager() {
               <div className="min-w-0 flex-1">
                 <p className="truncate font-bold">{it.name.uz || "Nomsiz"}</p>
                 <p className="text-sm font-extrabold text-brand">{money(it.price, cur)}</p>
-                <p className={`text-xs font-bold ${it.available ? "text-ok" : "text-red-500"}`}>{it.available ? "Sotuvda" : "Tugagan"}</p>
+                <p className={`text-xs font-bold ${it.available && it.stock !== 0 ? "text-ok" : "text-red-500"}`}>
+                  {!it.available ? "Tugagan" : it.stock === 0 ? "Qoldiq 0 — tugagan" : typeof it.stock === "number" ? `Qoldiq: ${it.stock} ta` : "Sotuvda"}
+                  {it.model3d && <span className="ml-1.5 text-brand">· 3D</span>}
+                </p>
               </div>
+              {typeof it.stock === "number" && (
+                <div onClick={(e) => e.stopPropagation()} className="flex items-center rounded-lg bg-sand">
+                  <button onClick={() => saveMenu({ items: menu.items.map((x) => (x.id === it.id ? { ...x, stock: Math.max(0, (x.stock ?? 0) - 1) } : x)) })} className="grid h-8 w-7 place-items-center" aria-label="minus"><Minus size={13} /></button>
+                  <button onClick={() => saveMenu({ items: menu.items.map((x) => (x.id === it.id ? { ...x, stock: (x.stock ?? 0) + 1 } : x)) })} className="grid h-8 w-7 place-items-center" aria-label="plus"><Plus size={13} /></button>
+                </div>
+              )}
               <Toggle on={it.available} onChange={(v) => toggle(it, v)} label="Mavjud" />
               <span className="grid h-9 w-9 place-items-center rounded-lg text-mute"><Pencil size={16} /></span>
             </div>
@@ -220,6 +231,10 @@ function ItemEditor({ item, onClose }: { item: Item; onClose: () => void }) {
             </Field>
             <Field label="Og'irligi / hajmi"><input value={it.weight ?? ""} onChange={(e) => set("weight", e.target.value)} placeholder="350 g" className={inputCls} /></Field>
             <Field label="Tayyorlash (daq)"><input inputMode="numeric" value={it.time ?? ""} onChange={(e) => set("time", Number(e.target.value.replace(/\D/g, "")) || undefined)} className={inputCls} /></Field>
+            <Field label="Necha kishilik"><input value={it.serves ?? ""} onChange={(e) => set("serves", e.target.value || undefined)} placeholder="1–2 kishi" className={inputCls} /></Field>
+            <Field label="Qoldiq soni" hint="Bo'sh = cheksiz. 0 bo'lsa avtomatik «Tugagan»">
+              <input inputMode="numeric" value={typeof it.stock === "number" ? it.stock : ""} onChange={(e) => { const v = e.target.value.replace(/\D/g, ""); set("stock", v === "" ? null : Number(v)); }} placeholder="cheksiz" className={inputCls} />
+            </Field>
           </div>
           <div>
             <p className="mb-1.5 text-sm font-bold text-mute">Belgilar</p>
@@ -230,6 +245,18 @@ function ItemEditor({ item, onClose }: { item: Item; onClose: () => void }) {
               })}
             </div>
           </div>
+          <div className="rounded-2xl bg-white p-3 ring-1 ring-line">
+            <p className="font-bold">⚡ Aqlli taklif</p>
+            <p className="mb-2 text-xs text-mute">Mijoz savatida shu taom bo'lsa, tanlangan taom sababi bilan taklif qilinadi</p>
+            <select value={it.suggest?.itemId ?? ""} onChange={(e) => set("suggest", e.target.value ? { itemId: e.target.value, reason: it.suggest?.reason ?? emptyT3() } : undefined)} className={`${inputCls} h-11`}>
+              <option value="">— Taklif yo'q —</option>
+              {menu.items.filter((x) => x.id !== it.id).map((x) => <option key={x.id} value={x.id}>{x.name.uz}</option>)}
+            </select>
+            {it.suggest && (
+              <input value={it.suggest.reason.uz} onChange={(e) => set("suggest", { ...it.suggest!, reason: { uz: e.target.value, ru: it.suggest!.reason.ru || e.target.value, en: it.suggest!.reason.en || e.target.value } })} placeholder="Sababi: masalan, «Oshga eng zo'r juftlik»" className={`${inputCls} mt-2 h-11`} />
+            )}
+          </div>
+          <ModelField value={it.model3d ?? ""} onChange={(v) => set("model3d", v || undefined)} />
           <OptionList title="Hajm variantlari" hint="Masalan: 0.5 / 1 porsiya — asosiy narxga qo'shiladi" rows={it.sizes ?? []} onChange={(v) => set("sizes", v as Size[])} prefix="s" />
           <OptionList title="Qo'shimchalar (upsell)" hint="Mijozga taom oynasida taklif qilinadi — o'rtacha chekni oshiradi" rows={it.addons ?? []} onChange={(v) => set("addons", v as Addon[])} prefix="a" />
         </div>
@@ -301,5 +328,32 @@ function CategoryEditor({ onClose }: { onClose: () => void }) {
       <Btn variant="soft" className="mt-3 w-full" onClick={() => setCats([...cats, { id: uid("c"), name: { uz: "Yangi kategoriya", ru: "", en: "" }, emoji: "🍽", sort: cats.length + 1, active: true }])}><Plus size={17} /> Kategoriya qo'shish</Btn>
       <p className="mt-3 text-xs text-mute">RU/EN nomlari bo'sh qolsa, o'zbekcha nom ko'rsatiladi.</p>
     </Modal>
+  );
+}
+
+function ModelField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const up = async (f: File) => {
+    setBusy(true); setErr("");
+    const fd = new FormData();
+    fd.append("file", f);
+    const r = await fetch("/api/upload", { method: "POST", body: fd });
+    const d = await r.json();
+    setBusy(false);
+    if (r.ok) onChange(d.url); else setErr(d.error || "Yuklanmadi");
+  };
+  return (
+    <div className="rounded-2xl bg-white p-3 ring-1 ring-line">
+      <p className="flex items-center gap-1.5 font-bold"><Box size={16} className="text-brand" /> 3D / AR model</p>
+      <p className="mb-2 text-xs text-mute">Taomning .glb modeli bo'lsa, mijoz uni stolida AR'da ko'radi (4MB gacha yoki havola)</p>
+      <div className="flex gap-2">
+        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="https://…/osh.glb" className={`${inputCls} h-11 flex-1`} />
+        <Btn size="sm" variant="soft" className="h-11" onClick={() => ref.current?.click()} disabled={busy}>{busy ? "..." : "Yuklash"}</Btn>
+      </div>
+      <input ref={ref} type="file" accept=".glb,.gltf,model/gltf-binary" hidden onChange={(e) => e.target.files?.[0] && up(e.target.files[0])} />
+      {err && <p className="mt-1 text-sm text-red-600">{err}</p>}
+    </div>
   );
 }

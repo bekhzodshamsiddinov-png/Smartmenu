@@ -1,6 +1,8 @@
 export type Lang = "uz" | "ru" | "en";
 export type T3 = { uz: string; ru: string; en: string };
 
+export type Badge = "hit" | "new" | "spicy" | "veg" | "chef" | "halal" | "smoky";
+
 export type Addon = { id: string; name: T3; price: number };
 export type Size = { id: string; name: T3; price: number };
 
@@ -11,7 +13,11 @@ export type Item = {
   desc: T3;
   price: number;
   image: string;
-  badges: ("hit" | "new" | "spicy" | "veg" | "chef")[];
+  badges: Badge[];
+  serves?: string; // "1–2 kishi"
+  stock?: number | null; // undefined/null = cheksiz
+  model3d?: string; // .glb URL — AR / 3D ko'rinish
+  suggest?: { itemId: string; reason: T3 }; // aqlli taklif
   weight?: string;
   kcal?: number;
   time?: number; // minutes
@@ -41,6 +47,9 @@ export type Settings = {
   accent: string;
   payments: { cash: boolean; card: boolean; click: boolean; payme: boolean };
   ordering: boolean; // if false — menu only (view mode)
+  mode?: "restaurant" | "hotel"; // hotel = xona raqami (room service)
+  telegramOrder?: string; // buyurtma qabul qiluvchi Telegram username
+  theme?: "light" | "dark"; // mijoz menyusi standart temasi
 };
 
 export type MenuData = {

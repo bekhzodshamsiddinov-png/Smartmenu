@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BarChart3, Bell, ChefHat, Clock, Globe, QrCode, ShieldCheck, Smartphone, Sparkles, TrendingUp, Zap, Check, ArrowRight, Printer, Star } from "lucide-react";
+import { BarChart3, Bell, ChefHat, Clock, Globe, QrCode, ShieldCheck, Smartphone, Sparkles, TrendingUp, Zap, Check, ArrowRight, Printer, Star, Hotel, Box, Send, Package } from "lucide-react";
 import DemoQR from "@/components/DemoQR";
 
 
@@ -12,6 +12,10 @@ const features = [
   { icon: BarChart3, t: "Jonli statistika", d: "Bugungi tushum, o'rtacha chek, top taomlar va soatlar kesimida savdo — telefoningizda." },
   { icon: Clock, t: "Tugagan taomni 1 tugmada o'chirish", d: "Stop-list bir soniyada yangilanadi — mijoz tugagan taomni buyurtma qila olmaydi." },
   { icon: Printer, t: "Chek va QR chop etish", d: "Har bir buyurtma uchun oshxona cheki, stollar uchun tayyor QR kartochkalar." },
+  { icon: Hotel, t: "Restoran va mehmonxona rejimi", d: "Stol raqami yoki xona raqami (room service) — bitta tugma bilan almashadi." },
+  { icon: Box, t: "3D / AR taom ko'rinishi", d: "Mijoz taomni telefon kamerasi orqali stolida haqiqiy o'lchamda ko'radi." },
+  { icon: Send, t: "Telegram orqali buyurtma", d: "Buyurtma tizimga tushadi va xohlasa Telegram'ga ham matn bo'lib yuboriladi." },
+  { icon: Package, t: "Qoldiq nazorati", d: "«3 ta qoldi» ko'rsatiladi, 0 bo'lganda taom avtomatik «Tugagan» bo'ladi." },
 ];
 
 const plans = [

@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { getMenu, saveMenu } from "@/lib/store";
+import { getMenu, saveMenu, soldToday } from "@/lib/store";
 import { requireRole } from "@/lib/auth";
 import type { MenuData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const m = await getMenu();
-  return NextResponse.json(m, { headers: { "Cache-Control": "no-store" } });
+  const [m, sold] = await Promise.all([getMenu(), soldToday()]);
+  return NextResponse.json({ ...m, sold }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function PUT(req: Request) {

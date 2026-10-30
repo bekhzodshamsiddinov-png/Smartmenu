@@ -52,7 +52,22 @@ export default function SettingsPage() {
 
         <Card className="space-y-4 p-5">
           <p className="font-display font-extrabold">Buyurtma va to'lov</p>
+          <div>
+            <p className="mb-1.5 text-sm font-bold text-mute">Ish rejimi</p>
+            <div className="grid grid-cols-2 gap-2">
+              {([["restaurant", "🍽 Restoran", "Stol raqami"], ["hotel", "🏨 Mehmonxona", "Xona raqami (room service)"]] as const).map(([id, l, d]) => (
+                <button key={id} type="button" onClick={() => set("mode", id)} className={`rounded-xl p-3 text-left ring-2 ${(s.mode ?? "restaurant") === id ? "bg-brand-soft ring-brand" : "bg-white ring-line"}`}>
+                  <p className="font-bold">{l}</p>
+                  <p className="text-xs text-mute">{d}</p>
+                </button>
+              ))}
+            </div>
+          </div>
           <Row title="Onlayn buyurtma" text="O'chirilsa, menyu faqat ko'rish rejimida ishlaydi"><Toggle on={s.ordering} onChange={(v) => set("ordering", v)} /></Row>
+          <Field label="Telegram orqali buyurtma (username)" hint="Mijozda «Telegram orqali yuborish» tugmasi chiqadi — buyurtma matni shu akkauntga yoziladi. Bo'sh qoldirsangiz tugma yashiriladi.">
+            <input value={s.telegramOrder ?? ""} onChange={(e) => set("telegramOrder", e.target.value.replace(/^@/, "").trim() || undefined)} placeholder="restoran_buyurtma" className={inputCls} />
+          </Field>
+          <Row title="Mijoz menyusi — qorong'i tema" text="Standart ko'rinish (mijoz o'zi ham almashtira oladi)"><Toggle on={s.theme === "dark"} onChange={(v) => set("theme", v ? "dark" : "light")} /></Row>
           <Field label="Xizmat haqi (%)"><input inputMode="numeric" value={s.serviceFee} onChange={(e) => set("serviceFee", Math.min(30, Number(e.target.value.replace(/\D/g, "")) || 0))} className={inputCls} /></Field>
           <p className="text-sm font-bold text-mute">To'lov usullari</p>
           {(["cash", "card", "click", "payme"] as const).map((p) => (

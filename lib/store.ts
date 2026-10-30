@@ -85,12 +85,65 @@ async function mutate<T, R>(path: string, init: () => T, fn: (doc: T) => R): Pro
 }
 
 /* ---------- Menu ---------- */
+/** Upgrades menus saved by older versions (adds new fields from the seed once). */
+function upgrade(m: MenuData): MenuData {
+  if ((m as MenuData & { schema?: number }).schema === 2) return m;
+  const seedById = new Map(seedMenu.items.map((i) => [i.id, i]));
+  m.items = m.items.map((it) => {
+    const sd = seedById.get(it.id);
+    if (!sd) return it;
+    return {
+      ...it,
+      serves: it.serves ?? sd.serves,
+      stock: it.stock !== undefined ? it.stock : sd.stock,
+      suggest: it.suggest ?? sd.suggest,
+      badges: Array.from(new Set([...it.badges, ...sd.badges.filter((b) => b === "halal" || b === "smoky")])),
+    };
+  });
+  m.settings = { mode: "restaurant", theme: "light", telegramOrder: m.settings.telegram, ...m.settings };
+  (m as MenuData & { schema?: number }).schema = 2;
+  return m;
+}
+
 export async function getMenu(): Promise<MenuData> {
   const { data } = await readDoc<MenuData>("menu.json");
-  return data ?? structuredClone(seedMenu);
+  return upgrade(data ?? structuredClone(seedMenu));
 }
+
+export class StockError extends Error {
+  constructor(public itemId: string, public left: number) { super("stock"); }
+}
+/** Atomically checks and decrements stock for limited items. */
+export async function reserveStock(want: Map<string, number>): Promise<void> {
+  const limited = [...want.keys()];
+  const menu = await getMenu();
+  if (!menu.items.some((i) => limited.includes(i.id) && typeof i.stock === "number")) return;
+  await saveMenu((m) => {
+    for (const [id, qty] of want) {
+      const it = m.items.find((i) => i.id === id);
+      if (!it || typeof it.stock !== "number") continue;
+      if (it.stock < qty) throw new StockError(id, it.stock);
+    }
+    for (const [id, qty] of want) {
+      const it = m.items.find((i) => i.id === id);
+      if (it && typeof it.stock === "number") it.stock -= qty;
+    }
+  });
+}
+
+/** Today's sold quantity per item (for "popular" counters). */
+export async function soldToday(): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (const o of await getOrders()) {
+    if (o.status === "cancelled") continue;
+    for (const l of o.lines) out[l.itemId] = (out[l.itemId] || 0) + l.qty;
+  }
+  return out;
+}
+
 export async function saveMenu(update: (m: MenuData) => void): Promise<MenuData> {
   return mutate<MenuData, MenuData>("menu.json", () => structuredClone(seedMenu), (m) => {
+    upgrade(m);
     update(m);
     m.version = (m.version || 0) + 1;
     return m;
@@ -165,7 +218,8 @@ export async function saveImage(file: File): Promise<string> {
     const buf = Buffer.from(await file.arrayBuffer());
     return `data:${file.type};base64,${buf.toString("base64")}`;
   }
-  await put(PREFIX + name, file, { access: "private", contentType: file.type, addRandomSuffix: false });
+  const ct = ext === "glb" ? "model/gltf-binary" : ext === "gltf" ? "model/gltf+json" : file.type;
+  await put(PREFIX + name, file, { access: "private", contentType: ct, addRandomSuffix: false });
   return `/api/img/${name}`;
 }
 export async function readImage(name: string) {

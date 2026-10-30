@@ -34,3 +34,21 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; -webk
 .anim-toast { animation: toast 2.2s ease-in-out forwards; }
 .pulse-ring { animation: pulse-ring 1.4s infinite; }
 .skeleton { background: linear-gradient(90deg, #efe7dc 0px, #f7f1ea 120px, #efe7dc 240px); background-size: 800px 100%; animation: shimmer 1.2s infinite linear; }
+
+/* Dark theme for the guest menu */
+.theme-dark {
+  --color-cream: #12100e;
+  --color-sand: #27221e;
+  --color-line: #322b26;
+  --color-mute: #a69a8f;
+  --color-brand-soft: #3a2014;
+  color: #f4ede6;
+  color-scheme: dark;
+}
+.theme-dark .bg-white { background-color: #1c1815; }
+.theme-dark .text-ink { color: #f4ede6; }
+.theme-dark .bg-ink { background-color: #f4ede6; color: #1c1815; }
+.theme-dark .bg-emerald-50 { background-color: #10291c; }
+.theme-dark .bg-amber-50 { background-color: #2b2110; }
+.theme-dark input, .theme-dark textarea { color: #f4ede6; }
+.theme-dark .bg-white\/90 { background-color: rgb(28 24 21 / 0.9); }
